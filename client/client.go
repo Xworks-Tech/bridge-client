@@ -5,25 +5,34 @@ import (
 	"log"
 
 	bridge "github.com/Xworks-Tech/bridge-client/proto"
+	"google.golang.org/grpc"
 )
 
 // KafkaChannel
 // A bi-directional streaming channel to listen and publish to a kafka topic
+func New(cc *grpc.ClientConn) KafkaChannel {
+	client := bridge.NewKafkaStreamClient(cc)
+	stream, err := client.Subscribe(context.Background())
+	if err != nil {
+		log.Fatalf("Error setting up stream: %v", err)
+	}
+	return KafkaChannel{
+		Client: client,
+		Stream: stream,
+	}
+}
+
 type KafkaChannel struct {
-	Stream bridge.KafkaStreamClient
+	Client bridge.KafkaStreamClient
+	Stream bridge.KafkaStream_SubscribeClient
 }
 
 // SubscribeToTopic
 // Subscribes to the kafka topic through the rpc call and returns a write and read channel
 func (kc *KafkaChannel) SubscribeToTopic(topic string) (<-chan []byte, chan<- []byte, error) {
-	stream, err := kc.Stream.Subscribe(context.Background())
-	if err != nil {
-		return nil, nil, err
-	}
 
 	write, read := make(chan []byte), make(chan []byte)
 
-	//
 	go func(st *bridge.KafkaStream_SubscribeClient, reader *chan []byte) {
 		for item := range *reader {
 			if err := (*st).Send(&bridge.PublishRequest{
@@ -38,7 +47,7 @@ func (kc *KafkaChannel) SubscribeToTopic(topic string) (<-chan []byte, chan<- []
 				break
 			}
 		}
-	}(&stream, &read)
+	}(&kc.Stream, &read)
 
 	go func(st *bridge.KafkaStream_SubscribeClient, writer *chan []byte) {
 		for {
@@ -59,7 +68,7 @@ func (kc *KafkaChannel) SubscribeToTopic(topic string) (<-chan []byte, chan<- []
 
 			}
 		}
-	}(&stream, &write)
+	}(&kc.Stream, &write)
 
 	return write, read, nil
 }

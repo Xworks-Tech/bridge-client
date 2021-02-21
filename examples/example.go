@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/Xworks-Tech/bridge-client/client"
-	bridge "github.com/Xworks-Tech/bridge-client/proto"
 	"google.golang.org/grpc"
 )
 
@@ -15,7 +14,7 @@ func main() {
 		log.Fatalf("Error starting grpc client: %v", err)
 	}
 	defer cc.Close()
-	kChannel := client.KafkaChannel{Stream: bridge.NewKafkaStreamClient(cc)}
+	kChannel := client.New(cc)
 	consumer, producer, err := kChannel.SubscribeToTopic("my-topic")
 	if err != nil {
 		log.Fatalf("Error subscribing to topic: %v", err)
