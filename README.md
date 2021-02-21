@@ -1,5 +1,13 @@
-package main
+# A client to connect to a kafka cluster via a grpc gateway
 
+#### TODO:
+
+- Unit Tests
+- Integration Test
+
+## Example Use:
+
+```go
 import (
 	"log"
 	"time"
@@ -37,3 +45,4 @@ func main() {
 	<-stayAliveFlag
 
 }
+```
