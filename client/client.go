@@ -52,17 +52,15 @@ func (kc *KafkaChannel) SubscribeToTopic(topic string) (<-chan []byte, chan<- []
 	go func(st *bridge.KafkaStream_SubscribeClient, writer *chan []byte) {
 		for {
 			response, err := (*st).Recv()
+			log.Println("Received message")
 			if err != nil {
 				log.Printf("Error receiving a response from bridge: %v", err)
 				close(*writer)
 				break
 			}
 			switch data := response.OptionalContent.(type) {
-
 			case *bridge.KafkaResponse_Content:
 				*writer <- *&data.Content
-				break
-
 			default:
 				break
 
