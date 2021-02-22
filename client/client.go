@@ -16,6 +16,7 @@ func New(cc *grpc.ClientConn) KafkaChannel {
 	if err != nil {
 		log.Fatalf("Error setting up stream: %v", err)
 	}
+
 	return KafkaChannel{
 		Client: client,
 		Stream: stream,
@@ -34,6 +35,12 @@ func (kc *KafkaChannel) SubscribeToTopic(topic string) (<-chan []byte, chan<- []
 	write, read := make(chan []byte), make(chan []byte)
 
 	go func(st *bridge.KafkaStream_SubscribeClient, reader *chan []byte) {
+		if err := kc.sendInitMessage(topic); err != nil {
+			log.Printf("Error sending message to bridge: %v", err)
+			(*st).CloseSend()
+			close(*reader)
+			return
+		}
 		for item := range *reader {
 			if err := (*st).Send(&bridge.PublishRequest{
 				Topic: topic,
@@ -69,4 +76,10 @@ func (kc *KafkaChannel) SubscribeToTopic(topic string) (<-chan []byte, chan<- []
 	}(&kc.Stream, &write)
 
 	return write, read, nil
+}
+
+func (kc *KafkaChannel) sendInitMessage(topic string) error {
+	return (*&kc.Stream).Send(&bridge.PublishRequest{
+		Topic: topic,
+	})
 }
