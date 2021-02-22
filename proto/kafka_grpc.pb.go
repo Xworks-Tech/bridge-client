@@ -19,6 +19,7 @@ const _ = grpc.SupportPackageIsVersion7
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type KafkaStreamClient interface {
 	Subscribe(ctx context.Context, opts ...grpc.CallOption) (KafkaStream_SubscribeClient, error)
+	Consume(ctx context.Context, in *ConsumeRequest, opts ...grpc.CallOption) (KafkaStream_ConsumeClient, error)
 }
 
 type kafkaStreamClient struct {
@@ -60,11 +61,44 @@ func (x *kafkaStreamSubscribeClient) Recv() (*KafkaResponse, error) {
 	return m, nil
 }
 
+func (c *kafkaStreamClient) Consume(ctx context.Context, in *ConsumeRequest, opts ...grpc.CallOption) (KafkaStream_ConsumeClient, error) {
+	stream, err := c.cc.NewStream(ctx, &KafkaStream_ServiceDesc.Streams[1], "/bridge.KafkaStream/Consume", opts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &kafkaStreamConsumeClient{stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+type KafkaStream_ConsumeClient interface {
+	Recv() (*KafkaResponse, error)
+	grpc.ClientStream
+}
+
+type kafkaStreamConsumeClient struct {
+	grpc.ClientStream
+}
+
+func (x *kafkaStreamConsumeClient) Recv() (*KafkaResponse, error) {
+	m := new(KafkaResponse)
+	if err := x.ClientStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
 // KafkaStreamServer is the server API for KafkaStream service.
 // All implementations must embed UnimplementedKafkaStreamServer
 // for forward compatibility
 type KafkaStreamServer interface {
 	Subscribe(KafkaStream_SubscribeServer) error
+	Consume(*ConsumeRequest, KafkaStream_ConsumeServer) error
 	mustEmbedUnimplementedKafkaStreamServer()
 }
 
@@ -74,6 +108,9 @@ type UnimplementedKafkaStreamServer struct {
 
 func (UnimplementedKafkaStreamServer) Subscribe(KafkaStream_SubscribeServer) error {
 	return status.Errorf(codes.Unimplemented, "method Subscribe not implemented")
+}
+func (UnimplementedKafkaStreamServer) Consume(*ConsumeRequest, KafkaStream_ConsumeServer) error {
+	return status.Errorf(codes.Unimplemented, "method Consume not implemented")
 }
 func (UnimplementedKafkaStreamServer) mustEmbedUnimplementedKafkaStreamServer() {}
 
@@ -114,6 +151,27 @@ func (x *kafkaStreamSubscribeServer) Recv() (*PublishRequest, error) {
 	return m, nil
 }
 
+func _KafkaStream_Consume_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(ConsumeRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(KafkaStreamServer).Consume(m, &kafkaStreamConsumeServer{stream})
+}
+
+type KafkaStream_ConsumeServer interface {
+	Send(*KafkaResponse) error
+	grpc.ServerStream
+}
+
+type kafkaStreamConsumeServer struct {
+	grpc.ServerStream
+}
+
+func (x *kafkaStreamConsumeServer) Send(m *KafkaResponse) error {
+	return x.ServerStream.SendMsg(m)
+}
+
 // KafkaStream_ServiceDesc is the grpc.ServiceDesc for KafkaStream service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -127,6 +185,11 @@ var KafkaStream_ServiceDesc = grpc.ServiceDesc{
 			Handler:       _KafkaStream_Subscribe_Handler,
 			ServerStreams: true,
 			ClientStreams: true,
+		},
+		{
+			StreamName:    "Consume",
+			Handler:       _KafkaStream_Consume_Handler,
+			ServerStreams: true,
 		},
 	},
 	Metadata: "proto/kafka.proto",

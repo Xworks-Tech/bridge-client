@@ -5,81 +5,36 @@ import (
 	"log"
 
 	bridge "github.com/Xworks-Tech/bridge-client/proto"
-	"google.golang.org/grpc"
 )
 
 // KafkaChannel
-// A bi-directional streaming channel to listen and publish to a kafka topic
-func New(cc *grpc.ClientConn) KafkaChannel {
-	client := bridge.NewKafkaStreamClient(cc)
-	stream, err := client.Subscribe(context.Background())
-	if err != nil {
-		log.Fatalf("Error setting up stream: %v", err)
-	}
-
-	return KafkaChannel{
-		Client: client,
-		Stream: stream,
-	}
-}
 
 type KafkaChannel struct {
 	Client bridge.KafkaStreamClient
-	Stream bridge.KafkaStream_SubscribeClient
 }
 
-// SubscribeToTopic
-// Subscribes to the kafka topic through the rpc call and returns a write and read channel
-func (kc *KafkaChannel) SubscribeToTopic(topic string) (<-chan []byte, chan<- []byte, error) {
-
-	write, read := make(chan []byte), make(chan []byte)
-
-	go func(st *bridge.KafkaStream_SubscribeClient, reader *chan []byte) {
-		if err := kc.sendInitMessage(topic); err != nil {
-			log.Printf("Error sending message to bridge: %v", err)
-			(*st).CloseSend()
-			close(*reader)
-			return
+func (kc *KafkaChannel) Subscribe(topic string) (<-chan []byte, error) {
+	readChan := make(chan []byte)
+	go func(reader *chan []byte) {
+		stream, err := kc.Client.Consume(context.Background(), &bridge.ConsumeRequest{
+			Topic: topic,
+		})
+		if err != nil {
+			log.Fatalf("Error creating cosumer stream: %v", err)
 		}
-		for item := range *reader {
-			if err := (*st).Send(&bridge.PublishRequest{
-				Topic: topic,
-				OptionalContent: &bridge.PublishRequest_Content{
-					Content: item,
-				},
-			}); err != nil {
-				log.Printf("Error sending message to bridge: %v", err)
-				(*st).CloseSend()
-				close(*reader)
-				break
-			}
-		}
-	}(&kc.Stream, &read)
-
-	go func(st *bridge.KafkaStream_SubscribeClient, writer *chan []byte) {
 		for {
-			response, err := (*st).Recv()
-			log.Println("Received message")
+			response, err := stream.Recv()
 			if err != nil {
-				log.Printf("Error receiving a response from bridge: %v", err)
-				close(*writer)
-				break
+				log.Fatalf("Error creating cosumer stream: %v", err)
 			}
 			switch data := response.OptionalContent.(type) {
 			case *bridge.KafkaResponse_Content:
-				*writer <- *&data.Content
+				*reader <- *&data.Content
 			default:
 				break
 
 			}
 		}
-	}(&kc.Stream, &write)
-
-	return write, read, nil
-}
-
-func (kc *KafkaChannel) sendInitMessage(topic string) error {
-	return (*&kc.Stream).Send(&bridge.PublishRequest{
-		Topic: topic,
-	})
+	}(&readChan)
+	return readChan, nil
 }
