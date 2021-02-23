@@ -18,8 +18,12 @@ const _ = grpc.SupportPackageIsVersion7
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type KafkaStreamClient interface {
+	// A bi-directional stream for writing and reading to kafka
 	Subscribe(ctx context.Context, opts ...grpc.CallOption) (KafkaStream_SubscribeClient, error)
+	// A unidirection stream for consuming a topic
 	Consume(ctx context.Context, in *ConsumeRequest, opts ...grpc.CallOption) (KafkaStream_ConsumeClient, error)
+	// A bi-directional stream for writing only that ACKs each new write
+	Produce(ctx context.Context, opts ...grpc.CallOption) (KafkaStream_ProduceClient, error)
 }
 
 type kafkaStreamClient struct {
@@ -93,12 +97,47 @@ func (x *kafkaStreamConsumeClient) Recv() (*KafkaResponse, error) {
 	return m, nil
 }
 
+func (c *kafkaStreamClient) Produce(ctx context.Context, opts ...grpc.CallOption) (KafkaStream_ProduceClient, error) {
+	stream, err := c.cc.NewStream(ctx, &KafkaStream_ServiceDesc.Streams[2], "/bridge.KafkaStream/Produce", opts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &kafkaStreamProduceClient{stream}
+	return x, nil
+}
+
+type KafkaStream_ProduceClient interface {
+	Send(*PublishRequest) error
+	Recv() (*ProduceResponse, error)
+	grpc.ClientStream
+}
+
+type kafkaStreamProduceClient struct {
+	grpc.ClientStream
+}
+
+func (x *kafkaStreamProduceClient) Send(m *PublishRequest) error {
+	return x.ClientStream.SendMsg(m)
+}
+
+func (x *kafkaStreamProduceClient) Recv() (*ProduceResponse, error) {
+	m := new(ProduceResponse)
+	if err := x.ClientStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
 // KafkaStreamServer is the server API for KafkaStream service.
 // All implementations must embed UnimplementedKafkaStreamServer
 // for forward compatibility
 type KafkaStreamServer interface {
+	// A bi-directional stream for writing and reading to kafka
 	Subscribe(KafkaStream_SubscribeServer) error
+	// A unidirection stream for consuming a topic
 	Consume(*ConsumeRequest, KafkaStream_ConsumeServer) error
+	// A bi-directional stream for writing only that ACKs each new write
+	Produce(KafkaStream_ProduceServer) error
 	mustEmbedUnimplementedKafkaStreamServer()
 }
 
@@ -111,6 +150,9 @@ func (UnimplementedKafkaStreamServer) Subscribe(KafkaStream_SubscribeServer) err
 }
 func (UnimplementedKafkaStreamServer) Consume(*ConsumeRequest, KafkaStream_ConsumeServer) error {
 	return status.Errorf(codes.Unimplemented, "method Consume not implemented")
+}
+func (UnimplementedKafkaStreamServer) Produce(KafkaStream_ProduceServer) error {
+	return status.Errorf(codes.Unimplemented, "method Produce not implemented")
 }
 func (UnimplementedKafkaStreamServer) mustEmbedUnimplementedKafkaStreamServer() {}
 
@@ -172,6 +214,32 @@ func (x *kafkaStreamConsumeServer) Send(m *KafkaResponse) error {
 	return x.ServerStream.SendMsg(m)
 }
 
+func _KafkaStream_Produce_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(KafkaStreamServer).Produce(&kafkaStreamProduceServer{stream})
+}
+
+type KafkaStream_ProduceServer interface {
+	Send(*ProduceResponse) error
+	Recv() (*PublishRequest, error)
+	grpc.ServerStream
+}
+
+type kafkaStreamProduceServer struct {
+	grpc.ServerStream
+}
+
+func (x *kafkaStreamProduceServer) Send(m *ProduceResponse) error {
+	return x.ServerStream.SendMsg(m)
+}
+
+func (x *kafkaStreamProduceServer) Recv() (*PublishRequest, error) {
+	m := new(PublishRequest)
+	if err := x.ServerStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
 // KafkaStream_ServiceDesc is the grpc.ServiceDesc for KafkaStream service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -190,6 +258,12 @@ var KafkaStream_ServiceDesc = grpc.ServiceDesc{
 			StreamName:    "Consume",
 			Handler:       _KafkaStream_Consume_Handler,
 			ServerStreams: true,
+		},
+		{
+			StreamName:    "Produce",
+			Handler:       _KafkaStream_Produce_Handler,
+			ServerStreams: true,
+			ClientStreams: true,
 		},
 	},
 	Metadata: "proto/kafka.proto",

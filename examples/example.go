@@ -13,13 +13,13 @@ func main() {
 	if err != nil {
 		log.Fatalf("Error starting grpc client: %v", err)
 	}
+
 	defer cc.Close()
 	kChannel := client.KafkaChannel{
 		Client: bridge.NewKafkaStreamClient(cc),
 	}
-
 	stayAliveFlag := make(chan bool)
-	consumer, err := kChannel.Subscribe("my-topic22")
+	consumer, err := kChannel.Consume("my-topic22")
 	if err != nil {
 		log.Fatalf("Error subscribing to topic: %v", err)
 	}
