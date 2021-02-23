@@ -13,7 +13,7 @@ type KafkaChannel struct {
 	Client bridge.KafkaStreamClient
 }
 
-func (kc *KafkaChannel) Consume(topic string) (<-chan []byte, error) {
+func (kc *KafkaChannel) Consume(topic string) <-chan []byte {
 	readChan := make(chan []byte)
 	go func(reader *chan []byte) {
 		stream, err := kc.Client.Consume(context.Background(), &bridge.ConsumeRequest{
@@ -36,7 +36,7 @@ func (kc *KafkaChannel) Consume(topic string) (<-chan []byte, error) {
 			}
 		}
 	}(&readChan)
-	return readChan, nil
+	return readChan
 }
 
 func (kc *KafkaChannel) Produce(topic string) chan<- []byte {
