@@ -43,41 +43,49 @@ func (kc *KafkaChannel) Produce(topic string) chan<- []byte {
 	writeChan := make(chan []byte)
 
 	go func(writer *chan []byte) {
+		defer close(*writer)
+
 		stream, err := kc.Client.Produce(context.Background())
 		if err != nil {
 			log.Fatalf("Error creating producer stream: %v", err)
 		}
 		for item := range *writer {
-			stream.Send(&bridge.PublishRequest{
+			err := stream.Send(&bridge.PublishRequest{
 				Topic: topic,
 				OptionalContent: &bridge.PublishRequest_Content{
 					Content: item,
 				},
 			})
+			if err != nil {
+				log.Printf("Error sending message to bridge: %v", err)
+				stream.CloseSend()
+				break
+
+			}
 			response, err := stream.Recv()
 			if err != nil {
+				log.Printf("Error receiving from ack from bridge: %v", err)
 				stream.CloseSend()
 				break
 
 			}
 
 			if response.Success == false {
+				log.Printf("Unsuccessful request sent to bridge: %s", string(item))
 				switch data := response.Message.(type) {
 
 				case *bridge.ProduceResponse_Content:
-					log.Println(data)
-					break
+					log.Printf("Error writing to bridge: %v", data)
 
 				default:
 					log.Println("Could not decode response")
-					break
 
 				}
 
 			}
 
 		}
-		close(*writer)
+
 	}(&writeChan)
 
 	return writeChan
