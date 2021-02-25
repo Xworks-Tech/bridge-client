@@ -13,19 +13,20 @@ type KafkaChannel struct {
 	Client bridge.KafkaStreamClient
 }
 
-func (kc *KafkaChannel) Consume(topic string) <-chan []byte {
+func (kc *KafkaChannel) Consume(topic string) (<-chan []byte, func() error) {
 	readChan := make(chan []byte)
-	go func(reader *chan []byte) {
-		stream, err := kc.Client.Consume(context.Background(), &bridge.ConsumeRequest{
-			Topic: topic,
-		})
-		if err != nil {
-			log.Fatalf("Error creating cosumer stream: %v", err)
-		}
+	stream, err := kc.Client.Consume(context.Background(), &bridge.ConsumeRequest{
+		Topic: topic,
+	})
+	if err != nil {
+		log.Fatalf("Error creating cosumer stream: %v", err)
+	}
+	go func(reader *chan []byte, consumeStream *bridge.KafkaStream_ConsumeClient) {
 		for {
 			response, err := stream.Recv()
 			if err != nil {
-				log.Fatalf("Error creating cosumer stream: %v", err)
+				log.Printf("Error creating cosumer stream: %v", err)
+				break
 			}
 			switch data := response.OptionalContent.(type) {
 			case *bridge.KafkaResponse_Content:
@@ -35,20 +36,27 @@ func (kc *KafkaChannel) Consume(topic string) <-chan []byte {
 
 			}
 		}
-	}(&readChan)
-	return readChan
+
+	}(&readChan, &stream)
+	closeCallback := func() error {
+		close(readChan)
+		return stream.CloseSend()
+	}
+	return readChan, closeCallback
 }
 
 func (kc *KafkaChannel) Produce(topic string) chan<- []byte {
 	writeChan := make(chan []byte)
 
 	go func(writer *chan []byte) {
-		defer close(*writer)
-
 		stream, err := kc.Client.Produce(context.Background())
 		if err != nil {
 			log.Fatalf("Error creating producer stream: %v", err)
 		}
+
+		defer close(*writer)
+		defer stream.CloseSend()
+
 		for item := range *writer {
 			err := stream.Send(&bridge.PublishRequest{
 				Topic: topic,
@@ -58,14 +66,12 @@ func (kc *KafkaChannel) Produce(topic string) chan<- []byte {
 			})
 			if err != nil {
 				log.Printf("Error sending message to bridge: %v", err)
-				stream.CloseSend()
 				break
 
 			}
 			response, err := stream.Recv()
 			if err != nil {
 				log.Printf("Error receiving from ack from bridge: %v", err)
-				stream.CloseSend()
 				break
 
 			}

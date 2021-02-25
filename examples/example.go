@@ -19,7 +19,7 @@ func main() {
 		Client: bridge.NewKafkaStreamClient(cc),
 	}
 	stayAliveFlag := make(chan bool)
-	consumer := kChannel.Consume("my-topic22")
+	consumer, _ := kChannel.Consume("my-topic")
 	if err != nil {
 		log.Fatalf("Error subscribing to topic: %v", err)
 	}
