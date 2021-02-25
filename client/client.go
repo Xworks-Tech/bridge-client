@@ -22,6 +22,11 @@ func (kc *KafkaChannel) Consume(topic string) (<-chan []byte, func() error) {
 		log.Fatalf("Error creating cosumer stream: %v", err)
 	}
 	go func(reader *chan []byte, consumeStream *bridge.KafkaStream_ConsumeClient) {
+		defer func() {
+			if recover() != nil {
+				log.Println("Consumer routine closed")
+			}
+		}()
 		for {
 			response, err := stream.Recv()
 			if err != nil {
@@ -39,8 +44,9 @@ func (kc *KafkaChannel) Consume(topic string) (<-chan []byte, func() error) {
 
 	}(&readChan, &stream)
 	closeCallback := func() error {
+		err := stream.CloseSend()
 		close(readChan)
-		return stream.CloseSend()
+		return err
 	}
 	return readChan, closeCallback
 }
