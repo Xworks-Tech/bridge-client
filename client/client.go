@@ -91,7 +91,7 @@ func (kc *KafkaChannel) Produce(topic string) chan<- []byte {
 	return writeChan
 }
 
-func (kc *KafkaChannel) MultiProduce() <-chan []string {
+func (kc *KafkaChannel) MultiProduce() chan<- []string {
 	requestChan := make(chan []string)
 	go func(writer *chan []string) {
 		defer close(*writer)
