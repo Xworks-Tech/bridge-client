@@ -15,7 +15,8 @@ type KafkaChannel struct {
 
 func (kc *KafkaChannel) Consume(topic string) (<-chan []byte, func() error) {
 	readChan := make(chan []byte)
-	stream, err := kc.Client.Consume(context.Background(), &bridge.ConsumeRequest{
+	ctx, cancel := context.WithCancel(context.Background())
+	stream, err := kc.Client.Consume(ctx, &bridge.ConsumeRequest{
 		Topic: topic,
 	})
 	if err != nil {
@@ -46,6 +47,7 @@ func (kc *KafkaChannel) Consume(topic string) (<-chan []byte, func() error) {
 	closeCallback := func() error {
 		err := stream.CloseSend()
 		close(readChan)
+		cancel()
 		return err
 	}
 	return readChan, closeCallback
