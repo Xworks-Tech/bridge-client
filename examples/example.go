@@ -65,6 +65,9 @@ func synchronousProduce() {
 	if err := writer.Produce(msg); err != nil {
 		log.Printf("Error writing message (%s): %v", msg, err)
 	}
+	if err := writer.Close(); err != nil {
+		log.Panicf("Error closing writer: %v", err)
+	}
 }
 
 func rawClientConsume(topic string, ID string) {
