@@ -57,12 +57,12 @@ func synchronousProduce() {
 	kChannel := client.KafkaChannel{
 		Client: bridge.NewKafkaStreamClient(cc),
 	}
-	writer, err := kChannel.CreateWriter("my-topic")
+	writer, err := kChannel.CreateWriter()
 	if err != nil {
 		log.Printf("Error creating writer: %v", err)
 	}
 	msg := "my message"
-	if err := writer.Produce(msg); err != nil {
+	if err := writer.Produce("my-topic", msg); err != nil {
 		log.Printf("Error writing message (%s): %v", msg, err)
 	}
 	if err := writer.Close(); err != nil {

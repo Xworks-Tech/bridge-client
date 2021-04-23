@@ -112,7 +112,7 @@ func (kc *KafkaChannel) AsyncProduce(topic string) (chan<- []byte, func() error)
 	return writeChan, closeCallback
 }
 
-func (kc *KafkaChannel) CreateWriter(topic string) (*KafkaWriter, error) {
+func (kc *KafkaChannel) CreateWriter() (*KafkaWriter, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	stream, err := kc.Client.Produce(ctx)
 	if err != nil {
@@ -125,21 +125,19 @@ func (kc *KafkaChannel) CreateWriter(topic string) (*KafkaWriter, error) {
 		return err
 	}
 	return &KafkaWriter{
-		Topic:  topic,
 		Close:  closeCallback,
 		stream: stream,
 	}, nil
 }
 
 type KafkaWriter struct {
-	Topic  string
 	Close  func() error
 	stream bridge.KafkaStream_ProduceClient
 }
 
-func (kw KafkaWriter) Produce(message string) error {
+func (kw KafkaWriter) Produce(topic string, message string) error {
 	err := kw.stream.Send(&bridge.PublishRequest{
-		Topic: kw.Topic,
+		Topic: topic,
 		OptionalContent: &bridge.PublishRequest_Content{
 			Content: []byte(message),
 		},
