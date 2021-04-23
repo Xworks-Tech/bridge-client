@@ -8,11 +8,13 @@
 ## Example Use:
 
 ```go
+package examples
+
 import (
 	"log"
-	"time"
 
 	"github.com/Xworks-Tech/bridge-client/client"
+	bridge "github.com/Xworks-Tech/bridge-client/proto"
 	"google.golang.org/grpc"
 )
 
@@ -21,19 +23,16 @@ func main() {
 	if err != nil {
 		log.Fatalf("Error starting grpc client: %v", err)
 	}
+
 	defer cc.Close()
-	kChannel := client.New(cc)
-	consumer, producer, err := kChannel.SubscribeToTopic("my-topic")
+	kChannel := client.KafkaChannel{
+		Client: bridge.NewKafkaStreamClient(cc),
+	}
+	stayAliveFlag := make(chan bool)
+	consumer, _ := kChannel.Consume("my-topic", "my-id")
 	if err != nil {
 		log.Fatalf("Error subscribing to topic: %v", err)
 	}
-	stayAliveFlag := make(chan bool)
-	go func() {
-		for {
-			time.Sleep(time.Second * 5)
-			producer <- []byte("hello!")
-		}
-	}()
 
 	go func() {
 		for elem := range consumer {
@@ -41,7 +40,11 @@ func main() {
 		}
 	}()
 
+	writer := kChannel.Produce("my-topic")
+	writer <- []byte("My message")
+
 	<-stayAliveFlag
 
 }
+
 ```
